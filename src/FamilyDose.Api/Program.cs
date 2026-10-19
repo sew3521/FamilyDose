@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+builder.Services.AddSingleton(TimeProvider.System);
 
 builder.Services.AddDbContext<FamilyDose.Api.Data.FamilyDoseDbContext>(
     options =>
@@ -38,3 +39,5 @@ app.MapGet("/api/health", () =>
 app.MapChildEndpoints();
 
 app.Run();
+
+public partial class Program { }

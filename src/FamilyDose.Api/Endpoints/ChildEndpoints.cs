@@ -56,6 +56,7 @@ public static class ChildEndpoints
         group.MapPost("/", async (
             CreateChildRequest request,
             FamilyDoseDbContext db,
+            TimeProvider clock,
             CancellationToken cancellationToken) =>
         {
             var name = request.Name?.Trim();
@@ -78,7 +79,7 @@ public static class ChildEndpoints
 
             if (request.DateOfBirth is null ||
                 request.DateOfBirth > DateOnly.FromDateTime(
-                    DateTime.UtcNow))
+                    clock.GetUtcNow().UtcDateTime))
             {
                 return Results.BadRequest(new
                 {

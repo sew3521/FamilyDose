@@ -65,3 +65,42 @@ and Graham Wesche.
 
 Tapping the application version number five times will reveal
 the dedication.
+
+## Code Readability and Maintainability
+
+FamilyDose prioritizes straightforward, human-readable code.
+
+### General Principles
+
+- Prefer simple implementations over unnecessary abstractions.
+- Use descriptive class, method, and variable names.
+- Keep methods focused on one responsibility.
+- Keep related functionality together.
+- Avoid unnecessary interfaces and generic frameworks.
+- Handle errors explicitly with meaningful messages.
+- Prefer maintainability over clever programming tricks.
+
+### Comments
+
+Explain why code exists and document non-obvious behavior.
+
+Do not add comments that simply repeat what the code does.
+
+Medication scheduling calculations require particularly clear
+documentation because correctness is essential.
+
+### Testing
+
+- Use descriptive test names.
+- Test actual application behavior whenever practical.
+- Use isolated SQLite databases for integration tests.
+- Keep tests deterministic with injectable time.
+- Test validation failures and boundary conditions.
+- Add regression tests when fixing defects.
+
+### Architecture
+
+Do not introduce complexity without a demonstrated benefit.
+
+Prefer readable, direct implementations over excessive
+abstraction layers.
