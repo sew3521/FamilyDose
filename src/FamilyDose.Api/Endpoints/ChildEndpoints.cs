@@ -233,6 +233,20 @@ public static class ChildEndpoints
                 return Results.NotFound();
             }
 
+            // Preserve medication records and their future
+            // administration history. Archiving is the alternative.
+            var hasMedications = await db.Medications.AnyAsync(
+                medication => medication.ChildId == id,
+                cancellationToken);
+
+            if (hasMedications)
+            {
+                return Results.Conflict(new
+                {
+                    error = "This child has medication records. Archive the profile instead."
+                });
+            }
+
             db.Children.Remove(child);
             await db.SaveChangesAsync(cancellationToken);
 

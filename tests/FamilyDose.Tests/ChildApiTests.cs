@@ -1,3 +1,7 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
+using FamilyDose.Api.Models;
+using FamilyDose.Api.Data;
 using System.Net;
 using System.Net.Http.Json;
 using FamilyDose.Tests.Infrastructure;
@@ -467,6 +471,56 @@ public sealed class ChildApiTests
         Assert.NotNull(remaining);
         var saved = Assert.Single(remaining);
         Assert.Equal(second.Id, saved.Id);
+    }
+
+
+    [Fact]
+    public async Task DeleteChild_WithMedication_ReturnsConflict()
+    {
+        using var factory = new FamilyDoseApiFactory();
+        await factory.InitializeDatabaseAsync();
+        using var client = factory.CreateClient();
+
+        var child = await CreateTestChildAsync(client);
+
+        // Insert a fictional medication into this test's isolated
+        // SQLite database. No development records are touched.
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider
+                .GetRequiredService<FamilyDoseDbContext>();
+
+            db.Medications.Add(new Medication
+            {
+                ChildId = child.Id,
+                Name = "Test Medication",
+                DoseAmount = 2.5m,
+                DoseUnit = "mL",
+                MinimumIntervalMinutes = 240,
+                MaxDosesPer24Hours = 5,
+                ScheduleMode = MedicationScheduleMode.AsNeeded
+            });
+
+            await db.SaveChangesAsync();
+        }
+
+        // A child with medications must not be permanently deleted.
+        var response = await client.DeleteAsync(
+            $"/api/children/{child.Id}");
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+
+        // Verify the child and medication still exist.
+        using var verificationScope = factory.Services.CreateScope();
+
+        var verificationDb = verificationScope.ServiceProvider
+            .GetRequiredService<FamilyDoseDbContext>();
+
+        Assert.True(await verificationDb.Children
+            .AnyAsync(c => c.Id == child.Id));
+
+        Assert.True(await verificationDb.Medications
+            .AnyAsync(m => m.ChildId == child.Id));
     }
 
     // Shared test setup keeps individual tests short and readable.
