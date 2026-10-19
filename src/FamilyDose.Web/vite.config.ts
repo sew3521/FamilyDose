@@ -3,6 +3,16 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+        server: {
+                host: '0.0.0.0',
+                allowedHosts: ['192.168.3.90'],
+                proxy: {
+                        '/api': {
+                                target: 'http://familydose-api:8080',
+                                changeOrigin: true
+                        }
+                }
+        },
 	plugins: [
 		sveltekit({
 			compilerOptions: {

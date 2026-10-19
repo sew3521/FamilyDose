@@ -1,0 +1,52 @@
+services:
+  familydose-api:
+    image: mcr.microsoft.com/dotnet/sdk:10.0
+    working_dir: /workspace
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    environment:
+      DOTNET_CLI_HOME: /tmp
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      NUGET_PACKAGES: /workspace/.nuget/packages
+    volumes:
+      - ./:/workspace
+    command:
+      - dotnet
+      - run
+      - --project
+      - src/FamilyDose.Api/FamilyDose.Api.csproj
+      - --no-launch-profile
+      - --urls
+      - http://0.0.0.0:8080
+    restart: unless-stopped
+    networks:
+      - familydose-dev
+
+  familydose-web:
+    image: node:24-bookworm-slim
+    working_dir: /workspace/src/FamilyDose.Web
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    environment:
+      HOME: /tmp
+      npm_config_cache: /tmp/npm-cache
+    volumes:
+      - ./:/workspace
+    command:
+      - npm
+      - run
+      - dev
+      - --
+      - --host
+      - 0.0.0.0
+    ports:
+      - "192.168.3.90:5173:5173"
+    depends_on:
+      - familydose-api
+    restart: unless-stopped
+    networks:
+      - familydose-dev
+
+networks:
+  familydose-dev:
+    driver: bridge
