@@ -17,6 +17,16 @@
     let error = $state('');
     let message = $state('');
 
+    // Editing uses separate fields so Cancel never changes saved data.
+    let editingId = $state<string | null>(null);
+    let editName = $state('');
+    let editBirthday = $state('');
+    let editingBusy = $state(false);
+    let confirmDelete = $state(false);
+    let deleteConfirmation = $state('');
+    let editError = $state('');
+
+
     // Format eight typed digits as MM/DD/YYYY.
     function formatBirthday(value: string): string {
         const digits = value.replace(/\D/g, '').slice(0, 8);
@@ -143,6 +153,151 @@
         }
     }
 
+    function startEditing(child: Child) {
+        editingId = child.id;
+        editName = child.name;
+        editBirthday = displayBirthday(child.dateOfBirth);
+        confirmDelete = false;
+        deleteConfirmation = '';
+        editError = '';
+        error = '';
+        message = '';
+    }
+
+    function cancelEditing() {
+        editingId = null;
+        confirmDelete = false;
+        deleteConfirmation = '';
+        editError = '';
+        error = '';
+    }
+
+    async function saveEditing(event: SubmitEvent) {
+        event.preventDefault();
+
+        if (!editingId || editingBusy) return;
+
+        const isoBirthday = birthdayToIso(editBirthday);
+
+        if (!isoBirthday) {
+            error = 'Enter a valid birthday in MM/DD/YYYY format.';
+            return;
+        }
+
+        editingBusy = true;
+        error = '';
+        message = '';
+
+        try {
+            const response = await fetch(`/api/children/${editingId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: editName.trim(),
+                    dateOfBirth: isoBirthday
+                })
+            });
+
+            if (!response.ok) {
+                const result = await response.json();
+                throw new Error(result.error ?? 'Unable to update profile.');
+            }
+
+            await loadChildren();
+
+            if (error) return;
+
+            editingId = null;
+            message = 'Child profile updated successfully.';
+        } catch (err) {
+            error = err instanceof Error
+                ? err.message
+                : 'Unable to update profile.';
+        } finally {
+            editingBusy = false;
+        }
+    }
+
+    async function changeArchiveStatus(child: Child) {
+        if (editingBusy) return;
+
+        editingBusy = true;
+        error = '';
+        message = '';
+
+        const action = child.isActive ? 'archive' : 'restore';
+
+        try {
+            const response = await fetch(
+                `/api/children/${child.id}/${action}`,
+                { method: 'POST' }
+            );
+
+            if (!response.ok) {
+                throw new Error(`Unable to ${action} profile.`);
+            }
+
+            await loadChildren();
+
+            if (error) return;
+
+            editingId = null;
+            message = child.isActive
+                ? 'Child profile archived.'
+                : 'Child profile restored.';
+        } catch (err) {
+            error = err instanceof Error
+                ? err.message
+                : 'Unable to update profile status.';
+        } finally {
+            editingBusy = false;
+        }
+    }
+
+    // Deletion is deliberately separate from editing.
+    // The parent must explicitly confirm the selected profile.
+    async function deleteChild(child: Child) {
+        if (editingBusy || deleteConfirmation !== child.name) return;
+
+        editingBusy = true;
+        editError = '';
+        message = '';
+
+        try {
+            const response = await fetch(
+                `/api/children/${child.id}`,
+                { method: 'DELETE' }
+            );
+
+            if (!response.ok) {
+                if (response.status === 409) {
+                    throw new Error(
+                        'This profile has associated records and cannot be deleted.'
+                    );
+                }
+
+                throw new Error('Unable to delete child profile.');
+            }
+
+            // Do not report success until the server confirms deletion.
+            editingId = null;
+            confirmDelete = false;
+            deleteConfirmation = '';
+
+            await loadChildren();
+
+            if (!error) {
+                message = 'Child profile permanently deleted.';
+            }
+        } catch (err) {
+            editError = err instanceof Error
+                ? err.message
+                : 'Unable to delete child profile.';
+        } finally {
+            editingBusy = false;
+        }
+    }
+
     onMount(loadChildren);
 </script>
 
@@ -177,13 +332,150 @@
                                 {child.name.charAt(0).toUpperCase()}
                             </div>
 
-                            <div>
+                            <div class="child-details">
                                 <strong>{child.name}</strong>
                                 <small>
                                     Born {displayBirthday(child.dateOfBirth)}
                                 </small>
+                                {#if !child.isActive}
+                                    <span class="archived">Archived</span>
+                                {/if}
                             </div>
+
+                            <button
+                                type="button"
+                                class="edit-button"
+                                onclick={() => startEditing(child)}
+                                disabled={editingBusy}
+                            >
+                                Edit
+                            </button>
                         </div>
+
+                        {#if editingId === child.id}
+                            <div class="edit-panel">
+                                <h3>Edit {child.name}</h3>
+
+                                <form onsubmit={saveEditing}>
+                                    <label for="edit-name">Name</label>
+                                    <input
+                                        id="edit-name"
+                                        type="text"
+                                        maxlength="100"
+                                        bind:value={editName}
+                                        required
+                                    />
+
+                                    <label for="edit-birthday">
+                                        Date of birth
+                                    </label>
+                                    <input
+                                        id="edit-birthday"
+                                        type="text"
+                                        inputmode="numeric"
+                                        placeholder="MM/DD/YYYY"
+                                        maxlength="10"
+                                        value={editBirthday}
+                                        oninput={(event) => {
+                                            editBirthday = formatBirthday(
+                                                event.currentTarget.value
+                                            );
+                                        }}
+                                        required
+                                    />
+
+                                    <button type="submit" disabled={editingBusy}>
+                                        {editingBusy ? 'Saving...' : 'Save changes'}
+                                    </button>
+                                </form>
+
+                                {#if editError}
+                                    <div class="alert error" role="alert">
+                                        {editError}
+                                    </div>
+                                {/if}
+
+                                <div class="edit-actions">
+                                    <button
+                                        type="button"
+                                        class="secondary-button"
+                                        onclick={cancelEditing}
+                                        disabled={editingBusy}
+                                    >
+                                        Cancel
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        class="archive-button"
+                                        onclick={() => changeArchiveStatus(child)}
+                                        disabled={editingBusy}
+                                    >
+                                        {child.isActive ? 'Archive child' : 'Restore child'}
+                                    </button>
+                                </div>
+
+                                <div class="danger-zone">
+                                    {#if !confirmDelete}
+                                        <button
+                                            type="button"
+                                            class="delete-link"
+                                            onclick={() => {
+                                                confirmDelete = true;
+                                                deleteConfirmation = '';
+                                                editError = '';
+                                            }}
+                                            disabled={editingBusy}
+                                        >
+                                            Permanently delete profile
+                                        </button>
+                                    {:else}
+                                        <h4>Delete {child.name}?</h4>
+                                        <p>
+                                            This permanently removes the child
+                                            profile. This action cannot be undone.
+                                        </p>
+
+                                        <label for="delete-confirmation">
+                                            Type {child.name} to confirm
+                                        </label>
+
+                                        <input
+                                            id="delete-confirmation"
+                                            type="text"
+                                            autocomplete="off"
+                                            bind:value={deleteConfirmation}
+                                        />
+
+                                        <div class="edit-actions">
+                                            <button
+                                                type="button"
+                                                class="secondary-button"
+                                                onclick={() => {
+                                                    confirmDelete = false;
+                                                    deleteConfirmation = '';
+                                                }}
+                                                disabled={editingBusy}
+                                            >
+                                                Cancel deletion
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                class="delete-button"
+                                                onclick={() => deleteChild(child)}
+                                                disabled={editingBusy ||
+                                                    deleteConfirmation !== child.name}
+                                            >
+                                                {editingBusy
+                                                    ? 'Deleting...'
+                                                    : 'Delete permanently'}
+                                            </button>
+                                        </div>
+                                    {/if}
+                                </div>
+                            </div>
+                        {/if}
                     {/each}
                 </div>
             {/if}
@@ -376,5 +668,93 @@
     .success {
         background: #dcfce7;
         color: #166534;
+    }
+
+    .child-details {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .edit-button {
+        margin: 0;
+        padding: 10px 16px;
+        background: white;
+        color: #2878d0;
+        border: 1px solid #2878d0;
+    }
+
+    .archived {
+        display: inline-block;
+        margin-top: 6px;
+        padding: 3px 8px;
+        border-radius: 6px;
+        background: #e2e8f0;
+        color: #475569;
+        font-size: 12px;
+    }
+
+    .edit-panel {
+        margin: 12px 0 20px;
+        padding: 20px;
+        border: 1px solid #cbd5e1;
+        border-radius: 12px;
+        background: #fafcff;
+    }
+
+    .edit-panel h3 {
+        margin-top: 0;
+    }
+
+    .edit-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 16px;
+    }
+
+    .edit-actions button {
+        flex: 1;
+        margin: 0;
+    }
+
+    .secondary-button {
+        background: #e2e8f0;
+        color: #334155;
+    }
+
+    .archive-button {
+        background: #64748b;
+    }
+
+    .danger-zone {
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid #fecaca;
+    }
+
+    .danger-zone h4 {
+        margin: 0 0 8px;
+        color: #991b1b;
+    }
+
+    .danger-zone p {
+        color: #64748b;
+        line-height: 1.5;
+    }
+
+    .delete-link {
+        width: 100%;
+        margin: 0;
+        background: transparent;
+        color: #b91c1c;
+        border: 1px solid #fecaca;
+    }
+
+    .delete-button {
+        background: #b91c1c;
+    }
+
+    .delete-button:hover:not(:disabled) {
+        background: #991b1b;
     }
 </style>
