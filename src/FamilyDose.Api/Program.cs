@@ -37,6 +37,7 @@ app.MapGet("/api/health", () =>
 .AllowAnonymous();
 
 app.MapChildEndpoints();
+app.MapMedicationEndpoints();
 
 app.Run();
 
