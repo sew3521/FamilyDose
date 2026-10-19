@@ -34,3 +34,11 @@ FamilyDose is a medication tracking tool, not a source of medical advice.
 Always confirm medication selection, dosage, frequency, and age appropriateness with a healthcare professional.
 
 FamilyDose does not verify whether a medication or dose is safe or appropriate.
+
+## Dedication
+
+FamilyDose is dedicated to Callen and Graham Wesche.
+
+You two inspired a project built to make caring for the people we love just a little easier.
+
+With love, Dad.

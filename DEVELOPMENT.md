@@ -48,3 +48,20 @@ Milestone 1: Initial project scaffolding.
 6. Push notifications
 7. PWA installation
 8. Production deployment
+
+## Frontend Notes
+
+The frontend was scaffolded using SvelteKit 3 and TypeScript.
+
+The generated project uses vite.config.ts.
+
+The initial production build uses adapter-auto. A suitable
+production adapter will be configured during Docker integration.
+
+## Dedication Easter Egg
+
+The About screen will contain a hidden dedication to Callen
+and Graham Wesche.
+
+Tapping the application version number five times will reveal
+the dedication.
