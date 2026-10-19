@@ -53,6 +53,11 @@
             </p>
         </section>
 
+
+        <nav class="navigation" aria-label="Main navigation">
+            <a href="/children">Manage children</a>
+        </nav>
+
         <footer>
             <button onclick={showEasterEgg}>FamilyDose v0.1.0</button>
         </footer>
@@ -147,4 +152,24 @@
     }
     aside p { color: #695c65; }
     .heart { color: #d94c68; font-size: 32px; }
+
+    .navigation {
+        margin: 24px 0;
+    }
+
+    .navigation a {
+        display: block;
+        padding: 14px;
+        border-radius: 10px;
+        background: #2878d0;
+        color: white;
+        font-weight: 600;
+        text-decoration: none;
+        text-align: center;
+    }
+
+    .navigation a:hover {
+        background: #1e63af;
+    }
+
 </style>
