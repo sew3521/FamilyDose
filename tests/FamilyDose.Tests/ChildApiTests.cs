@@ -175,6 +175,321 @@ public sealed class ChildApiTests
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
 
+
+    [Fact]
+    public async Task UpdateChild_WithValidData_UpdatesExistingProfile()
+    {
+        using var factory = new FamilyDoseApiFactory();
+        await factory.InitializeDatabaseAsync();
+
+        using var client = factory.CreateClient();
+
+        // Create a fictional child to update.
+        var createdResponse = await client.PostAsJsonAsync(
+            "/api/children/",
+            new
+            {
+                Name = "Original Name",
+                DateOfBirth = "2024-01-15"
+            });
+
+        Assert.Equal(HttpStatusCode.Created, createdResponse.StatusCode);
+
+        var created = await createdResponse.Content
+            .ReadFromJsonAsync<ChildResponse>();
+
+        Assert.NotNull(created);
+
+        // Update the existing record rather than creating another.
+        var updateResponse = await client.PutAsJsonAsync(
+            $"/api/children/{created.Id}",
+            new
+            {
+                Name = "Updated Name",
+                DateOfBirth = "2023-06-10"
+            });
+
+        Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
+
+        var updated = await updateResponse.Content
+            .ReadFromJsonAsync<ChildResponse>();
+
+        Assert.NotNull(updated);
+        Assert.Equal(created.Id, updated.Id);
+        Assert.Equal("Updated Name", updated.Name);
+        Assert.Equal(new DateOnly(2023, 6, 10), updated.DateOfBirth);
+        Assert.True(updated.IsActive);
+
+        // Confirm the database contains the updated record.
+        var saved = await client.GetFromJsonAsync<ChildResponse>(
+            $"/api/children/{created.Id}");
+
+        Assert.NotNull(saved);
+        Assert.Equal("Updated Name", saved.Name);
+        Assert.Equal(updated.DateOfBirth, saved.DateOfBirth);
+
+        // Editing must not create a duplicate profile.
+        var allChildren = await client.GetFromJsonAsync<List<ChildResponse>>(
+            "/api/children/");
+
+        Assert.NotNull(allChildren);
+        Assert.Single(allChildren);
+    }
+
+    [Fact]
+    public async Task UpdateChild_WithUnknownId_ReturnsNotFound()
+    {
+        using var factory = new FamilyDoseApiFactory();
+        await factory.InitializeDatabaseAsync();
+
+        using var client = factory.CreateClient();
+
+        var response = await client.PutAsJsonAsync(
+            $"/api/children/{Guid.NewGuid()}",
+            new
+            {
+                Name = "Test Child",
+                DateOfBirth = "2024-01-15"
+            });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateChild_WithBlankName_ReturnsBadRequest()
+    {
+        using var factory = new FamilyDoseApiFactory();
+        await factory.InitializeDatabaseAsync();
+
+        using var client = factory.CreateClient();
+
+        var createdResponse = await client.PostAsJsonAsync(
+            "/api/children/",
+            new
+            {
+                Name = "Original Name",
+                DateOfBirth = "2024-01-15"
+            });
+
+        var created = await createdResponse.Content
+            .ReadFromJsonAsync<ChildResponse>();
+
+        Assert.NotNull(created);
+
+        var response = await client.PutAsJsonAsync(
+            $"/api/children/{created.Id}",
+            new
+            {
+                Name = "   ",
+                DateOfBirth = "2024-01-15"
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        // Invalid updates must leave the original record unchanged.
+        var saved = await client.GetFromJsonAsync<ChildResponse>(
+            $"/api/children/{created.Id}");
+
+        Assert.NotNull(saved);
+        Assert.Equal("Original Name", saved.Name);
+    }
+
+    [Fact]
+    public async Task UpdateChild_WithFutureBirthday_ReturnsBadRequest()
+    {
+        using var factory = new FamilyDoseApiFactory();
+        await factory.InitializeDatabaseAsync();
+
+        using var client = factory.CreateClient();
+
+        var createdResponse = await client.PostAsJsonAsync(
+            "/api/children/",
+            new
+            {
+                Name = "Test Child",
+                DateOfBirth = "2024-01-15"
+            });
+
+        var created = await createdResponse.Content
+            .ReadFromJsonAsync<ChildResponse>();
+
+        Assert.NotNull(created);
+
+        // Our fixed test clock is October 19, 2026.
+        var response = await client.PutAsJsonAsync(
+            $"/api/children/{created.Id}",
+            new
+            {
+                Name = "Test Child",
+                DateOfBirth = "2026-10-20"
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+
+    [Fact]
+    public async Task ArchiveChild_ExistingProfile_SetsInactive()
+    {
+        using var factory = new FamilyDoseApiFactory();
+        await factory.InitializeDatabaseAsync();
+        using var client = factory.CreateClient();
+
+        var created = await CreateTestChildAsync(client);
+
+        var response = await client.PostAsync(
+            $"/api/children/{created.Id}/archive", null);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        // Archiving preserves the record and its original identity.
+        var saved = await client.GetFromJsonAsync<ChildResponse>(
+            $"/api/children/{created.Id}");
+
+        Assert.NotNull(saved);
+        Assert.Equal(created.Id, saved.Id);
+        Assert.False(saved.IsActive);
+    }
+
+    [Fact]
+    public async Task RestoreChild_ArchivedProfile_SetsActive()
+    {
+        using var factory = new FamilyDoseApiFactory();
+        await factory.InitializeDatabaseAsync();
+        using var client = factory.CreateClient();
+
+        var created = await CreateTestChildAsync(client);
+
+        await client.PostAsync(
+            $"/api/children/{created.Id}/archive", null);
+
+        var response = await client.PostAsync(
+            $"/api/children/{created.Id}/restore", null);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        var saved = await client.GetFromJsonAsync<ChildResponse>(
+            $"/api/children/{created.Id}");
+
+        Assert.NotNull(saved);
+        Assert.True(saved.IsActive);
+    }
+
+    [Fact]
+    public async Task ArchiveChild_UnknownId_ReturnsNotFound()
+    {
+        using var factory = new FamilyDoseApiFactory();
+        await factory.InitializeDatabaseAsync();
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsync(
+            $"/api/children/{Guid.NewGuid()}/archive", null);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task RestoreChild_UnknownId_ReturnsNotFound()
+    {
+        using var factory = new FamilyDoseApiFactory();
+        await factory.InitializeDatabaseAsync();
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsync(
+            $"/api/children/{Guid.NewGuid()}/restore", null);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+
+    [Fact]
+    public async Task DeleteChild_ExistingProfile_RemovesRecord()
+    {
+        using var factory = new FamilyDoseApiFactory();
+        await factory.InitializeDatabaseAsync();
+        using var client = factory.CreateClient();
+
+        var child = await CreateTestChildAsync(client);
+
+        // Delete the profile and verify the API confirms removal.
+        var response = await client.DeleteAsync(
+            $"/api/children/{child.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        // The deleted profile must no longer be retrievable.
+        var getResponse = await client.GetAsync(
+            $"/api/children/{child.Id}");
+
+        Assert.Equal(HttpStatusCode.NotFound, getResponse.StatusCode);
+
+        var children = await client.GetFromJsonAsync<List<ChildResponse>>(
+            "/api/children/");
+
+        Assert.NotNull(children);
+        Assert.Empty(children);
+    }
+
+    [Fact]
+    public async Task DeleteChild_UnknownId_ReturnsNotFound()
+    {
+        using var factory = new FamilyDoseApiFactory();
+        await factory.InitializeDatabaseAsync();
+        using var client = factory.CreateClient();
+
+        var response = await client.DeleteAsync(
+            $"/api/children/{Guid.NewGuid()}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteChild_DoesNotRemoveOtherProfiles()
+    {
+        using var factory = new FamilyDoseApiFactory();
+        await factory.InitializeDatabaseAsync();
+        using var client = factory.CreateClient();
+
+        var first = await CreateTestChildAsync(client);
+        var second = await CreateTestChildAsync(client);
+
+        Assert.NotEqual(first.Id, second.Id);
+
+        // Removing one child must not affect another child.
+        var response = await client.DeleteAsync(
+            $"/api/children/{first.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        var remaining = await client.GetFromJsonAsync<List<ChildResponse>>(
+            "/api/children/");
+
+        Assert.NotNull(remaining);
+        var saved = Assert.Single(remaining);
+        Assert.Equal(second.Id, saved.Id);
+    }
+
+    // Shared test setup keeps individual tests short and readable.
+    private static async Task<ChildResponse> CreateTestChildAsync(
+        HttpClient client)
+    {
+        var response = await client.PostAsJsonAsync(
+            "/api/children/",
+            new
+            {
+                Name = "Fictional Child",
+                DateOfBirth = "2024-01-15"
+            });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var child = await response.Content
+            .ReadFromJsonAsync<ChildResponse>();
+
+        Assert.NotNull(child);
+        return child;
+    }
+
     private sealed record ChildResponse(
         Guid Id,
         string Name,

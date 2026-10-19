@@ -108,10 +108,145 @@ public static class ChildEndpoints
                 });
         });
 
+
+        // Update an existing child without changing its identity
+        // or any medication history associated with the profile.
+        group.MapPut("/{id:guid}", async (
+            Guid id,
+            UpdateChildRequest request,
+            FamilyDoseDbContext db,
+            TimeProvider clock,
+            CancellationToken cancellationToken) =>
+        {
+            var child = await db.Children.FindAsync(
+                [id], cancellationToken);
+
+            if (child is null)
+            {
+                return Results.NotFound();
+            }
+
+            var name = request.Name?.Trim();
+
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return Results.BadRequest(new
+                {
+                    error = "Child name is required."
+                });
+            }
+
+            if (name.Length > 100)
+            {
+                return Results.BadRequest(new
+                {
+                    error = "Child name cannot exceed 100 characters."
+                });
+            }
+
+            var today = DateOnly.FromDateTime(
+                clock.GetUtcNow().UtcDateTime);
+
+            if (request.DateOfBirth is null ||
+                request.DateOfBirth.Value == default ||
+                request.DateOfBirth.Value > today)
+            {
+                return Results.BadRequest(new
+                {
+                    error = "A valid date of birth is required."
+                });
+            }
+
+            child.Name = name;
+            child.DateOfBirth = request.DateOfBirth.Value;
+
+            await db.SaveChangesAsync(cancellationToken);
+
+            return Results.Ok(new
+            {
+                child.Id,
+                child.Name,
+                child.DateOfBirth,
+                child.IsActive
+            });
+        });
+
+
+        // Archiving hides a profile from normal medication tracking
+        // without destroying its history or changing its identity.
+        group.MapPost("/{id:guid}/archive", async (
+            Guid id,
+            FamilyDoseDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var child = await db.Children.FindAsync(
+                [id], cancellationToken);
+
+            if (child is null)
+            {
+                return Results.NotFound();
+            }
+
+            child.IsActive = false;
+            await db.SaveChangesAsync(cancellationToken);
+
+            return Results.NoContent();
+        });
+
+        // Restoring makes an archived profile available again.
+        group.MapPost("/{id:guid}/restore", async (
+            Guid id,
+            FamilyDoseDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var child = await db.Children.FindAsync(
+                [id], cancellationToken);
+
+            if (child is null)
+            {
+                return Results.NotFound();
+            }
+
+            child.IsActive = true;
+            await db.SaveChangesAsync(cancellationToken);
+
+            return Results.NoContent();
+        });
+
+
+        // Permanently delete a child profile.
+        //
+        // IMPORTANT: Before medication records are introduced,
+        // this endpoint must be extended to reject deletion when
+        // dependent records exist. Never cascade-delete medication
+        // administration history.
+        group.MapDelete("/{id:guid}", async (
+            Guid id,
+            FamilyDoseDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            var child = await db.Children.FindAsync(
+                [id], cancellationToken);
+
+            if (child is null)
+            {
+                return Results.NotFound();
+            }
+
+            db.Children.Remove(child);
+            await db.SaveChangesAsync(cancellationToken);
+
+            return Results.NoContent();
+        });
+
         return app;
     }
 }
 
 public sealed record CreateChildRequest(
+    string? Name,
+    DateOnly? DateOfBirth);
+
+public sealed record UpdateChildRequest(
     string? Name,
     DateOnly? DateOfBirth);
